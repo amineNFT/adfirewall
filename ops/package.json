@@ -1,0 +1,26 @@
+{
+  "name": "ad-firewall-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Operational scripts for Ad Firewall on Ritual Chain: executor discovery, RitualWallet funding, and an auto-moderation keeper.",
+  "scripts": {
+    "executor": "tsx src/executor.ts",
+    "deposit": "tsx src/deposit.ts",
+    "keeper": "tsx src/keeper.ts",
+    "demo": "tsx src/demo.ts",
+    "diagnose": "tsx src/diagnose.ts",
+    "executors": "tsx src/list-executors.ts",
+    "health": "tsx src/health.ts",
+    "read-ad": "tsx src/read-ad.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
