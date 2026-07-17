@@ -1,37 +1,53 @@
 'use client';
 
 import { useState } from 'react';
-import { isAddress } from 'viem';
-import { useAccount } from 'wagmi';
+import { encodeFunctionData, isAddress } from 'viem';
+import { useAccount, useSendTransaction, useSwitchChain } from 'wagmi';
+import { AD_FIREWALL, ritualChain } from '@/lib/chain';
+import { adFirewallAbi } from '@/lib/abi';
 import { useLLMExecutor, useSiteAds } from '@/lib/hooks';
 import { AdCard } from './AdCard';
 
 export function ModerationPanel() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
   const [site, setSite] = useState('');
   const [busy, setBusy] = useState<bigint | null>(null);
   const [err, setErr] = useState('');
-  const { count, isLoading: exLoading } = useLLMExecutor();
+  const { executor, count, isLoading: exLoading } = useLLMExecutor();
+  const { sendTransactionAsync } = useSendTransaction();
+  const { switchChainAsync } = useSwitchChain();
 
   const useMine = () => address && setSite(address);
   const validSite = isAddress(site);
   const { ads, refetch } = useSiteAds(validSite ? (site as `0x${string}`) : undefined);
 
-  // Moderation is submitted by a server-side relayer (see /api/moderate).
-  // Browser wallets can't simulate async-precompile txns, so the relayer
-  // signs with a funded server key and an explicit gas limit instead.
+  // Moderation is signed by the visitor's connected wallet. moderateAd calls the
+  // async LLM precompile (0x0802), which browser wallets cannot simulate — so we
+  // use sendTransaction + encodeFunctionData with an explicit gas limit to skip
+  // gas estimation entirely (Ritual's documented browser pattern). The signing
+  // EOA pays the LLM fee, so it must hold a locked RitualWallet deposit.
   async function moderate(id: bigint) {
     setErr('');
+    if (!isConnected) {
+      setErr('Connect your wallet first (top-right).');
+      return;
+    }
+    if (!executor) {
+      setErr('No LLM executor available from TEEServiceRegistry right now.');
+      return;
+    }
     setBusy(id);
     try {
-      const res = await fetch('/api/moderate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adId: id.toString() }),
+      if (chainId !== ritualChain.id) {
+        await switchChainAsync({ chainId: ritualChain.id });
+      }
+      const data = encodeFunctionData({
+        abi: adFirewallAbi,
+        functionName: 'moderateAd',
+        args: [id, executor],
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'moderation failed');
-      setTimeout(() => refetch(), 2000);
+      await sendTransactionAsync({ to: AD_FIREWALL, data, gas: 6_000_000n });
+      setTimeout(() => refetch(), 3000);
     } catch (e) {
       setErr(`Error: ${(e as Error).message.split('\n')[0]}`);
     } finally {
@@ -54,8 +70,8 @@ export function ModerationPanel() {
           </span>
         </div>
         <p className="mt-1 text-[11px] text-zinc-600">
-          Moderation is submitted by the server relayer key (/api/moderate). Ensure that key has a
-          RitualWallet deposit for fees.
+          Moderation is signed by your connected wallet. Your wallet pays the LLM fee, so it needs a
+          RitualWallet deposit — use the “+ deposit” control in the header first.
         </p>
       </div>
 
@@ -87,7 +103,7 @@ export function ModerationPanel() {
                     <button
                       className="btn-ember mt-3 w-full"
                       onClick={() => moderate(ad.id)}
-                      disabled={busy === ad.id}
+                      disabled={busy === ad.id || !isConnected || !executor}
                     >
                       {busy === ad.id
                         ? 'Running on-chain AI…'

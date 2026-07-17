@@ -89,16 +89,18 @@ RitualWallet note: async moderation needs both a balance **and** an active time-
 ```bash
 cd frontend
 npm install
-cp .env.local.example .env.local     # NEXT_PUBLIC_AD_FIREWALL_ADDRESS + PRIVATE_KEY (server relayer)
+cp .env.local.example .env.local     # NEXT_PUBLIC_AD_FIREWALL_ADDRESS
 npm run dev                          # http://localhost:3000
 ```
 
 Tabs: **Publisher** (define policy), **Advertiser** (submit ads), **Moderation** (run on-chain
-AI verdicts via a server relayer), **Ad Slots** (renders only firewall-approved ads).
+AI verdicts), **Ad Slots** (renders only firewall-approved ads).
 
-Moderation is submitted by a server-side relayer (`/api/moderate`) because browser wallets
-cannot simulate async-precompile transactions. The relayer key must hold a locked RitualWallet
-balance.
+Moderation is signed by the visitor's **connected wallet** — there is no server-side key.
+Because `moderateAd` calls an async precompile (which browser wallets can't simulate), the app
+uses `sendTransaction` + `encodeFunctionData` with an explicit gas limit to skip estimation.
+The signing wallet pays the LLM fee, so it must hold a locked RitualWallet deposit (use the
+“+ deposit” control in the header). Deploying the frontend needs no secret env vars.
 
 ## Security notes
 
